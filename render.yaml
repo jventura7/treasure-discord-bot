@@ -2,7 +2,6 @@ services:
   - type: worker
     name: notion-discord-bot
     runtime: node
-    plan: free
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
