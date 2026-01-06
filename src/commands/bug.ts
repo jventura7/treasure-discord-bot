@@ -1,126 +1,230 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js';
-import { addBug, listBugs, updateBugStatus, assignBug, completeBug } from '../services/notion.js';
+import {
+  SlashCommandBuilder,
+  ChatInputCommandInteraction,
+  EmbedBuilder,
+  Colors,
+} from "discord.js";
+import {
+  addBug,
+  listBugs,
+  updateBugStatus,
+  assignBug,
+  completeBug,
+  BugSeverity,
+  BugPriority,
+  BugStatus,
+  type Bug,
+} from "../services/notion.js";
+
+// Emoji helpers
+function severityEmoji(severity: BugSeverity): string {
+  switch (severity) {
+    case BugSeverity.High:
+      return "🔴";
+    case BugSeverity.Medium:
+      return "🟡";
+    case BugSeverity.Low:
+      return "🟢";
+    default:
+      return "⚪";
+  }
+}
+
+function priorityEmoji(priority: BugPriority): string {
+  switch (priority) {
+    case BugPriority.Urgent:
+      return "🚨";
+    case BugPriority.High:
+      return "⬆️";
+    case BugPriority.Medium:
+      return "➡️";
+    case BugPriority.Low:
+      return "⬇️";
+    default:
+      return "➡️";
+  }
+}
+
+function statusEmoji(status: BugStatus): string {
+  switch (status) {
+    case BugStatus.Open:
+      return "🔵";
+    case BugStatus.InProgress:
+      return "🟠";
+    case BugStatus.Fixed:
+      return "✅";
+    case BugStatus.NonIssue:
+      return "⚪";
+    default:
+      return "🔵";
+  }
+}
+
+function severityColor(severity: BugSeverity): number {
+  switch (severity) {
+    case BugSeverity.High:
+      return Colors.Red;
+    case BugSeverity.Medium:
+      return Colors.Yellow;
+    case BugSeverity.Low:
+      return Colors.Green;
+    default:
+      return Colors.Blurple;
+  }
+}
 
 export const data = new SlashCommandBuilder()
-  .setName('bug')
-  .setDescription('Bug tracker commands')
-  .addSubcommand(subcommand =>
+  .setName("bug")
+  .setDescription("Bug tracker commands")
+  .addSubcommand((subcommand) =>
     subcommand
-      .setName('add')
-      .setDescription('Add a new bug to the tracker')
-      .addStringOption(option =>
-        option.setName('title')
-          .setDescription('Bug title')
-          .setRequired(true))
-      .addStringOption(option =>
-        option.setName('description')
-          .setDescription('Bug description')
-          .setRequired(true))
-      .addStringOption(option =>
-        option.setName('severity')
-          .setDescription('Bug severity')
+      .setName("add")
+      .setDescription("Add a new bug to the tracker")
+      .addStringOption((option) =>
+        option.setName("title").setDescription("Bug title").setRequired(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName("description")
+          .setDescription("Bug description")
+          .setRequired(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName("severity")
+          .setDescription("Bug severity")
           .setRequired(true)
           .addChoices(
-            { name: 'Critical', value: 'Critical' },
-            { name: 'High', value: 'High' },
-            { name: 'Medium', value: 'Medium' },
-            { name: 'Low', value: 'Low' }
-          ))
-      .addStringOption(option =>
-        option.setName('priority')
-          .setDescription('Bug priority')
+            { name: "High", value: BugSeverity.High },
+            { name: "Medium", value: BugSeverity.Medium },
+            { name: "Low", value: BugSeverity.Low }
+          )
+      )
+      .addStringOption((option) =>
+        option
+          .setName("priority")
+          .setDescription("Bug priority")
           .setRequired(true)
           .addChoices(
-            { name: 'Urgent', value: 'Urgent' },
-            { name: 'High', value: 'High' },
-            { name: 'Medium', value: 'Medium' },
-            { name: 'Low', value: 'Low' }
-          ))
-      .addUserOption(option =>
-        option.setName('assignee')
-          .setDescription('Assign to a user')
-          .setRequired(false))
-      .addStringOption(option =>
-        option.setName('steps')
-          .setDescription('Reproduction steps')
-          .setRequired(false))
-      .addStringOption(option =>
-        option.setName('host')
-          .setDescription('Relevant host/environment')
-          .setRequired(false))
-      .addStringOption(option =>
-        option.setName('deadline')
-          .setDescription('Deadline (YYYY-MM-DD format)')
-          .setRequired(false)))
-  .addSubcommand(subcommand =>
+            { name: "Urgent", value: BugPriority.Urgent },
+            { name: "High", value: BugPriority.High },
+            { name: "Medium", value: BugPriority.Medium },
+            { name: "Low", value: BugPriority.Low }
+          )
+      )
+      .addUserOption((option) =>
+        option
+          .setName("assignee")
+          .setDescription("Assign to a user")
+          .setRequired(false)
+      )
+      .addStringOption((option) =>
+        option
+          .setName("steps")
+          .setDescription("Reproduction steps")
+          .setRequired(false)
+      )
+      .addStringOption((option) =>
+        option
+          .setName("host")
+          .setDescription("Relevant host/environment")
+          .setRequired(false)
+      )
+      .addStringOption((option) =>
+        option
+          .setName("deadline")
+          .setDescription("Deadline (YYYY-MM-DD format)")
+          .setRequired(false)
+      )
+  )
+  .addSubcommand((subcommand) =>
     subcommand
-      .setName('list')
-      .setDescription('List all bugs')
-      .addStringOption(option =>
-        option.setName('status')
-          .setDescription('Filter by status')
+      .setName("list")
+      .setDescription("List all bugs")
+      .addStringOption((option) =>
+        option
+          .setName("status")
+          .setDescription("Filter by status")
           .setRequired(false)
           .addChoices(
-            { name: 'Open', value: 'Open' },
-            { name: 'In Progress', value: 'In Progress' },
-            { name: 'Resolved', value: 'Resolved' },
-            { name: 'Closed', value: 'Closed' }
-          )))
-  .addSubcommand(subcommand =>
+            { name: "Open", value: BugStatus.Open },
+            { name: "In Progress", value: BugStatus.InProgress },
+            { name: "Fixed", value: BugStatus.Fixed },
+            { name: "Non Issue", value: BugStatus.NonIssue }
+          )
+      )
+  )
+  .addSubcommand((subcommand) =>
     subcommand
-      .setName('update')
-      .setDescription('Update a bug status')
-      .addIntegerOption(option =>
-        option.setName('id')
-          .setDescription('Bug ID')
-          .setRequired(true))
-      .addStringOption(option =>
-        option.setName('status')
-          .setDescription('New status')
+      .setName("update")
+      .setDescription("Update a bug status")
+      .addIntegerOption((option) =>
+        option.setName("id").setDescription("Bug ID").setRequired(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName("status")
+          .setDescription("New status")
           .setRequired(true)
           .addChoices(
-            { name: 'Open', value: 'Open' },
-            { name: 'In Progress', value: 'In Progress' },
-            { name: 'Resolved', value: 'Resolved' },
-            { name: 'Closed', value: 'Closed' }
-          )))
-  .addSubcommand(subcommand =>
+            { name: "Open", value: BugStatus.Open },
+            { name: "In Progress", value: BugStatus.InProgress },
+            { name: "Fixed", value: BugStatus.Fixed },
+            { name: "Non Issue", value: BugStatus.NonIssue }
+          )
+      )
+  )
+  .addSubcommand((subcommand) =>
     subcommand
-      .setName('assign')
-      .setDescription('Assign a bug to someone')
-      .addIntegerOption(option =>
-        option.setName('id')
-          .setDescription('Bug ID')
-          .setRequired(true))
-      .addUserOption(option =>
-        option.setName('user')
-          .setDescription('User to assign')
-          .setRequired(true)))
-  .addSubcommand(subcommand =>
+      .setName("assign")
+      .setDescription("Assign a bug to someone")
+      .addIntegerOption((option) =>
+        option.setName("id").setDescription("Bug ID").setRequired(true)
+      )
+      .addUserOption((option) =>
+        option
+          .setName("user")
+          .setDescription("User to assign")
+          .setRequired(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
     subcommand
-      .setName('complete')
-      .setDescription('Mark a bug as completed')
-      .addIntegerOption(option =>
-        option.setName('id')
-          .setDescription('Bug ID')
-          .setRequired(true)));
+      .setName("complete")
+      .setDescription("Mark a bug as completed")
+      .addIntegerOption((option) =>
+        option.setName("id").setDescription("Bug ID").setRequired(true)
+      )
+  );
 
-export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
+function formatBugLine(bug: Bug): string {
+  return `**#${bug.id}** │ ${bug.title}\n${statusEmoji(bug.status)} ${bug.status} · ${severityEmoji(bug.severity)} ${bug.severity} · ${priorityEmoji(bug.priority)} ${bug.priority} · 👤 ${bug.assignee}`;
+}
+
+export async function execute(
+  interaction: ChatInputCommandInteraction
+): Promise<void> {
   const subcommand = interaction.options.getSubcommand();
 
   try {
     switch (subcommand) {
-      case 'add': {
+      case "add": {
         await interaction.deferReply();
 
-        const title = interaction.options.getString('title', true);
-        const description = interaction.options.getString('description', true);
-        const severity = interaction.options.getString('severity', true);
-        const priority = interaction.options.getString('priority', true);
-        const assignee = interaction.options.getUser('assignee');
-        const steps = interaction.options.getString('steps');
-        const host = interaction.options.getString('host');
-        const deadline = interaction.options.getString('deadline');
+        const title = interaction.options.getString("title", true);
+        const description = interaction.options.getString("description", true);
+        const severity = interaction.options.getString(
+          "severity",
+          true
+        ) as BugSeverity;
+        const priority = interaction.options.getString(
+          "priority",
+          true
+        ) as BugPriority;
+        const assignee = interaction.options.getUser("assignee");
+        const steps = interaction.options.getString("steps");
+        const host = interaction.options.getString("host");
+        const deadline = interaction.options.getString("deadline");
 
         const bug = await addBug({
           title,
@@ -130,90 +234,184 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
           assignee: assignee?.username,
           steps: steps ?? undefined,
           host: host ?? undefined,
-          deadline: deadline ?? undefined
+          deadline: deadline ?? undefined,
         });
 
-        await interaction.editReply({
-          content: `Bug created successfully!\n**ID:** ${bug.id}\n**Title:** ${title}\n**Severity:** ${severity}\n**Priority:** ${priority}`
-        });
-        break;
-      }
+        const embed = new EmbedBuilder()
+          .setColor(Colors.Green)
+          .setTitle("✅ Bug Created Successfully")
+          .addFields(
+            { name: "Bug ID", value: `#${bug.id}`, inline: true },
+            {
+              name: "Status",
+              value: `${statusEmoji(BugStatus.Open)} Open`,
+              inline: true,
+            },
+            { name: "\u200b", value: "\u200b", inline: true },
+            { name: "Title", value: title },
+            { name: "Description", value: description },
+            {
+              name: "Severity",
+              value: `${severityEmoji(severity)} ${severity}`,
+              inline: true,
+            },
+            {
+              name: "Priority",
+              value: `${priorityEmoji(priority)} ${priority}`,
+              inline: true,
+            },
+            {
+              name: "Assignee",
+              value: assignee ? `@${assignee.username}` : "Unassigned",
+              inline: true,
+            }
+          )
+          .setTimestamp()
+          .setFooter({ text: "Bug Tracker" });
 
-      case 'list': {
-        await interaction.deferReply();
-
-        const statusFilter = interaction.options.getString('status');
-        const bugs = await listBugs(statusFilter);
-
-        if (bugs.length === 0) {
-          await interaction.editReply('No bugs found.');
-          return;
+        if (steps) {
+          embed.addFields({ name: "Reproduction Steps", value: steps });
+        }
+        if (host) {
+          embed.addFields({ name: "Environment", value: host, inline: true });
+        }
+        if (deadline) {
+          embed.addFields({ name: "Deadline", value: deadline, inline: true });
         }
 
-        const bugList = bugs.slice(0, 10).map(bug =>
-          `**#${bug.id}** - ${bug.title} [${bug.status}] (${bug.severity})`
-        ).join('\n');
-
-        await interaction.editReply({
-          content: `**Bug List${statusFilter ? ` (${statusFilter})` : ''}:**\n${bugList}${bugs.length > 10 ? `\n... and ${bugs.length - 10} more` : ''}`
-        });
+        await interaction.editReply({ embeds: [embed] });
         break;
       }
 
-      case 'update': {
+      case "list": {
         await interaction.deferReply();
 
-        const bugId = interaction.options.getInteger('id', true);
-        const status = interaction.options.getString('status', true);
+        const statusFilter = interaction.options.getString("status");
+        const bugs = await listBugs(statusFilter);
+
+        const embed = new EmbedBuilder()
+          .setColor(Colors.Blurple)
+          .setTitle("🐛 Bug Tracker")
+          .setTimestamp()
+          .setFooter({ text: "Bug Tracker" });
+
+        if (bugs.length === 0) {
+          embed.setDescription(
+            statusFilter
+              ? `No bugs found with status: **${statusFilter}**\n\nTry a different filter or view all bugs with \`/bug list\``
+              : "No bugs found.\n\nCreate one with `/bug add`"
+          );
+        } else {
+          const filterText = statusFilter ? ` (${statusFilter})` : "";
+          embed.setTitle(`🐛 Bug Tracker - ${bugs.length} bug${bugs.length > 1 ? "s" : ""}${filterText}`);
+
+          const bugLines = bugs
+            .slice(0, 10)
+            .map((bug) => formatBugLine(bug))
+            .join("\n\n");
+
+          embed.setDescription(bugLines);
+
+          if (bugs.length > 10) {
+            embed.addFields({
+              name: "\u200b",
+              value: `*...and ${bugs.length - 10} more bugs*`,
+            });
+          }
+        }
+
+        await interaction.editReply({ embeds: [embed] });
+        break;
+      }
+
+      case "update": {
+        await interaction.deferReply();
+
+        const bugId = interaction.options.getInteger("id", true);
+        const status = interaction.options.getString("status", true) as BugStatus;
 
         await updateBugStatus(bugId, status);
 
-        await interaction.editReply({
-          content: `Bug #${bugId} status updated to **${status}**`
-        });
+        const embed = new EmbedBuilder()
+          .setColor(Colors.Yellow)
+          .setTitle("🔄 Bug Updated")
+          .addFields(
+            { name: "Bug ID", value: `#${bugId}`, inline: true },
+            {
+              name: "New Status",
+              value: `${statusEmoji(status)} ${status}`,
+              inline: true,
+            }
+          )
+          .setTimestamp()
+          .setFooter({ text: "Bug Tracker" });
+
+        await interaction.editReply({ embeds: [embed] });
         break;
       }
 
-      case 'assign': {
+      case "assign": {
         await interaction.deferReply();
 
-        const bugId = interaction.options.getInteger('id', true);
-        const user = interaction.options.getUser('user', true);
+        const bugId = interaction.options.getInteger("id", true);
+        const user = interaction.options.getUser("user", true);
 
         await assignBug(bugId, user.username);
 
-        await interaction.editReply({
-          content: `Bug #${bugId} assigned to **${user.username}**`
-        });
+        const embed = new EmbedBuilder()
+          .setColor(Colors.Blurple)
+          .setTitle("👤 Bug Assigned")
+          .addFields(
+            { name: "Bug ID", value: `#${bugId}`, inline: true },
+            { name: "Assignee", value: `@${user.username}`, inline: true }
+          )
+          .setTimestamp()
+          .setFooter({ text: "Bug Tracker" });
+
+        await interaction.editReply({ embeds: [embed] });
         break;
       }
 
-      case 'complete': {
+      case "complete": {
         await interaction.deferReply();
 
-        const bugId = interaction.options.getInteger('id', true);
+        const bugId = interaction.options.getInteger("id", true);
 
         await completeBug(bugId);
 
-        await interaction.editReply({
-          content: `Bug #${bugId} marked as **completed**`
-        });
+        const embed = new EmbedBuilder()
+          .setColor(Colors.Green)
+          .setTitle("✅ Bug Completed")
+          .addFields(
+            { name: "Bug ID", value: `#${bugId}`, inline: true },
+            {
+              name: "Status",
+              value: `${statusEmoji(BugStatus.Fixed)} Fixed`,
+              inline: true,
+            }
+          )
+          .setTimestamp()
+          .setFooter({ text: "Bug Tracker" });
+
+        await interaction.editReply({ embeds: [embed] });
         break;
       }
     }
   } catch (error) {
-    console.error('Bug command error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error("Bug command error:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+
+    const embed = new EmbedBuilder()
+      .setColor(Colors.Red)
+      .setTitle("❌ Error")
+      .setDescription(errorMessage)
+      .setFooter({ text: "Please check the bug ID and try again" });
 
     if (interaction.deferred) {
-      await interaction.editReply({
-        content: `Error: ${errorMessage}`
-      });
+      await interaction.editReply({ embeds: [embed] });
     } else {
-      await interaction.reply({
-        content: `Error: ${errorMessage}`,
-        ephemeral: true
-      });
+      await interaction.reply({ embeds: [embed], ephemeral: true });
     }
   }
 }

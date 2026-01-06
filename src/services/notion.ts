@@ -8,12 +8,33 @@ import "dotenv/config";
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 const dataSourceId = process.env.NOTION_DATA_SOURCE_ID!;
 
+// Enums
+export enum BugSeverity {
+  High = "High",
+  Medium = "Medium",
+  Low = "Low",
+}
+
+export enum BugPriority {
+  Urgent = "Urgent",
+  High = "High",
+  Medium = "Medium",
+  Low = "Low",
+}
+
+export enum BugStatus {
+  Open = "Open",
+  InProgress = "In Progress",
+  Fixed = "Fixed",
+  NonIssue = "Non Issue",
+}
+
 // Types
 export interface BugInput {
   title: string;
   description: string;
-  severity: string;
-  priority: string;
+  severity: BugSeverity;
+  priority: BugPriority;
   assignee?: string;
   steps?: string;
   host?: string;
@@ -24,9 +45,9 @@ export interface Bug {
   id: number | string;
   notionId: string;
   title: string;
-  status: string;
-  severity: string;
-  priority: string;
+  status: BugStatus;
+  severity: BugSeverity;
+  priority: BugPriority;
   assignee: string;
 }
 
@@ -35,7 +56,6 @@ export interface BugCreateResult {
   notionId: string;
 }
 
-// Helper to check if result is a full page
 function isFullPage(
   page: PageObjectResponse | PartialPageObjectResponse
 ): page is PageObjectResponse {
@@ -60,7 +80,7 @@ export async function addBug({
       rich_text: [{ text: { content: description } }],
     },
     Status: {
-      status: { name: "Open" },
+      status: { name: BugStatus.Open },
     },
     Severity: {
       select: { name: severity },
@@ -69,7 +89,7 @@ export async function addBug({
       select: { name: priority },
     },
     "Date Created": {
-      date: { start: new Date().toISOString().split("T")[0] },
+      date: { start: new Date().toISOString() },
     },
   };
 
@@ -155,9 +175,9 @@ export async function listBugs(
         id: props["Bug ID"]?.unique_id?.number ?? "N/A",
         notionId: page.id,
         title: props["Title"]?.title?.[0]?.text?.content ?? "Untitled",
-        status: props["Status"]?.status?.name ?? "Unknown",
-        severity: props["Severity"]?.select?.name ?? "Unknown",
-        priority: props["Priority"]?.select?.name ?? "Unknown",
+        status: (props["Status"]?.status?.name ?? BugStatus.Open) as BugStatus,
+        severity: (props["Severity"]?.select?.name ?? BugSeverity.Medium) as BugSeverity,
+        priority: (props["Priority"]?.select?.name ?? BugPriority.Medium) as BugPriority,
         assignee:
           props["Assignee"]?.rich_text?.[0]?.text?.content ?? "Unassigned",
       };
@@ -226,10 +246,10 @@ export async function completeBug(
     page_id: bug.id,
     properties: {
       Status: {
-        status: { name: "Closed" },
+        status: { name: BugStatus.Fixed },
       },
       "Date Completed": {
-        date: { start: new Date().toISOString().split("T")[0] },
+        date: { start: new Date().toISOString() },
       },
     },
   });

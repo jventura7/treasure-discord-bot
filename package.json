@@ -11,7 +11,8 @@
     "deploy-commands": "tsx src/deploy-commands.ts",
     "test:notion": "tsx src/tests/test-notion.ts",
     "test:discord": "tsx src/tests/test-discord.ts",
-    "test:all": "tsx src/tests/test-notion.ts && tsx src/tests/test-discord.ts"
+    "test:all": "tsx src/tests/test-notion.ts && tsx src/tests/test-discord.ts",
+    "preview": "tsx src/tests/preview-output.ts"
   },
   "keywords": [
     "discord",
