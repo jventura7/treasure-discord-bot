@@ -1,0 +1,23 @@
+{
+  "name": "notion-discord-bot",
+  "version": "1.0.0",
+  "description": "Discord bot for bug tracking with Notion integration",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "deploy-commands": "node src/deploy-commands.js",
+    "test:notion": "node src/tests/test-notion.js",
+    "test:discord": "node src/tests/test-discord.js",
+    "test:all": "node src/tests/test-notion.js && node src/tests/test-discord.js"
+  },
+  "keywords": ["discord", "notion", "bug-tracker"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@notionhq/client": "^5.6.0",
+    "discord.js": "^14.25.1",
+    "dotenv": "^17.2.3"
+  }
+}
