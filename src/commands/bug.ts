@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js';
 import { addBug, listBugs, updateBugStatus, assignBug, completeBug } from '../services/notion.js';
 
 export const data = new SlashCommandBuilder()
@@ -105,7 +105,7 @@ export const data = new SlashCommandBuilder()
           .setDescription('Bug ID')
           .setRequired(true)));
 
-export async function execute(interaction) {
+export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const subcommand = interaction.options.getSubcommand();
 
   try {
@@ -113,10 +113,10 @@ export async function execute(interaction) {
       case 'add': {
         await interaction.deferReply();
 
-        const title = interaction.options.getString('title');
-        const description = interaction.options.getString('description');
-        const severity = interaction.options.getString('severity');
-        const priority = interaction.options.getString('priority');
+        const title = interaction.options.getString('title', true);
+        const description = interaction.options.getString('description', true);
+        const severity = interaction.options.getString('severity', true);
+        const priority = interaction.options.getString('priority', true);
         const assignee = interaction.options.getUser('assignee');
         const steps = interaction.options.getString('steps');
         const host = interaction.options.getString('host');
@@ -128,9 +128,9 @@ export async function execute(interaction) {
           severity,
           priority,
           assignee: assignee?.username,
-          steps,
-          host,
-          deadline
+          steps: steps ?? undefined,
+          host: host ?? undefined,
+          deadline: deadline ?? undefined
         });
 
         await interaction.editReply({
@@ -163,8 +163,8 @@ export async function execute(interaction) {
       case 'update': {
         await interaction.deferReply();
 
-        const bugId = interaction.options.getInteger('id');
-        const status = interaction.options.getString('status');
+        const bugId = interaction.options.getInteger('id', true);
+        const status = interaction.options.getString('status', true);
 
         await updateBugStatus(bugId, status);
 
@@ -177,8 +177,8 @@ export async function execute(interaction) {
       case 'assign': {
         await interaction.deferReply();
 
-        const bugId = interaction.options.getInteger('id');
-        const user = interaction.options.getUser('user');
+        const bugId = interaction.options.getInteger('id', true);
+        const user = interaction.options.getUser('user', true);
 
         await assignBug(bugId, user.username);
 
@@ -191,7 +191,7 @@ export async function execute(interaction) {
       case 'complete': {
         await interaction.deferReply();
 
-        const bugId = interaction.options.getInteger('id');
+        const bugId = interaction.options.getInteger('id', true);
 
         await completeBug(bugId);
 
@@ -203,13 +203,17 @@ export async function execute(interaction) {
     }
   } catch (error) {
     console.error('Bug command error:', error);
-    const reply = interaction.deferred
-      ? interaction.editReply
-      : interaction.reply;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-    await reply.call(interaction, {
-      content: `Error: ${error.message}`,
-      ephemeral: true
-    });
+    if (interaction.deferred) {
+      await interaction.editReply({
+        content: `Error: ${errorMessage}`
+      });
+    } else {
+      await interaction.reply({
+        content: `Error: ${errorMessage}`,
+        ephemeral: true
+      });
+    }
   }
 }

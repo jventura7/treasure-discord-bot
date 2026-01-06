@@ -4,11 +4,37 @@ import { Client, GatewayIntentBits, REST, Routes } from 'discord.js';
 console.log('🧪 Discord API Connection Test\n');
 console.log('='.repeat(50));
 
+interface TestResults {
+  envVars?: boolean;
+  restApi?: boolean;
+  guildAccess?: boolean;
+  commands?: boolean;
+  gateway?: boolean;
+}
+
+interface DiscordUser {
+  id: string;
+  username: string;
+  discriminator?: string;
+}
+
+interface DiscordGuild {
+  id: string;
+  name: string;
+  approximate_member_count?: number;
+}
+
+interface DiscordCommand {
+  name: string;
+  description?: string;
+  options?: Array<{ type: number; name: string }>;
+}
+
 // Check environment variables
-function checkEnvVars() {
+function checkEnvVars(): boolean {
   console.log('\n📋 Checking environment variables...\n');
 
-  const vars = {
+  const vars: Record<string, string | undefined> = {
     DISCORD_TOKEN: process.env.DISCORD_TOKEN,
     DISCORD_CLIENT_ID: process.env.DISCORD_CLIENT_ID,
     DISCORD_GUILD_ID: process.env.DISCORD_GUILD_ID
@@ -30,13 +56,13 @@ function checkEnvVars() {
 }
 
 // Test REST API (token validation)
-async function testRestApi() {
+async function testRestApi(): Promise<{ success: boolean; user?: DiscordUser }> {
   console.log('\n🔐 Testing REST API authentication...\n');
 
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!);
 
   try {
-    const user = await rest.get(Routes.user());
+    const user = await rest.get(Routes.user()) as DiscordUser;
     console.log(`  ✅ Bot authenticated: ${user.username}#${user.discriminator || '0'}`);
     console.log(`  ✅ Bot ID: ${user.id}`);
 
@@ -51,8 +77,9 @@ async function testRestApi() {
 
     return { success: true, user };
   } catch (error) {
-    console.log(`  ❌ REST API failed: ${error.message}`);
-    if (error.status === 401) {
+    const err = error as Error & { status?: number };
+    console.log(`  ❌ REST API failed: ${err.message}`);
+    if (err.status === 401) {
       console.log('     → Your DISCORD_TOKEN is invalid or expired');
     }
     return { success: false };
@@ -60,21 +87,22 @@ async function testRestApi() {
 }
 
 // Test guild access
-async function testGuildAccess() {
+async function testGuildAccess(): Promise<{ success: boolean; guild?: DiscordGuild }> {
   console.log('\n🏠 Testing guild access...\n');
 
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  const guildId = process.env.DISCORD_GUILD_ID;
+  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!);
+  const guildId = process.env.DISCORD_GUILD_ID!;
 
   try {
-    const guild = await rest.get(Routes.guild(guildId));
+    const guild = await rest.get(Routes.guild(guildId)) as DiscordGuild;
     console.log(`  ✅ Guild found: ${guild.name}`);
     console.log(`  ✅ Guild ID: ${guild.id}`);
     console.log(`  ✅ Member count: ~${guild.approximate_member_count || 'N/A'}`);
     return { success: true, guild };
   } catch (error) {
-    console.log(`  ❌ Guild access failed: ${error.message}`);
-    if (error.status === 404) {
+    const err = error as Error & { status?: number };
+    console.log(`  ❌ Guild access failed: ${err.message}`);
+    if (err.status === 404) {
       console.log('     → Bot is not in this guild or guild ID is incorrect');
       console.log('     → Invite the bot using:');
       console.log(`       https://discord.com/api/oauth2/authorize?client_id=${process.env.DISCORD_CLIENT_ID}&permissions=2147485696&scope=bot%20applications.commands`);
@@ -84,16 +112,16 @@ async function testGuildAccess() {
 }
 
 // Test registered commands
-async function testCommands() {
+async function testCommands(): Promise<{ success: boolean; commands: DiscordCommand[] }> {
   console.log('\n⚡ Testing registered commands...\n');
 
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  const clientId = process.env.DISCORD_CLIENT_ID;
-  const guildId = process.env.DISCORD_GUILD_ID;
+  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN!);
+  const clientId = process.env.DISCORD_CLIENT_ID!;
+  const guildId = process.env.DISCORD_GUILD_ID!;
 
   try {
     // Check guild commands
-    const guildCommands = await rest.get(Routes.applicationGuildCommands(clientId, guildId));
+    const guildCommands = await rest.get(Routes.applicationGuildCommands(clientId, guildId)) as DiscordCommand[];
 
     if (guildCommands.length === 0) {
       console.log('  ⚠️  No guild commands registered');
@@ -119,13 +147,14 @@ async function testCommands() {
 
     return { success: true, commands: guildCommands };
   } catch (error) {
-    console.log(`  ❌ Failed to fetch commands: ${error.message}`);
-    return { success: false };
+    const err = error as Error;
+    console.log(`  ❌ Failed to fetch commands: ${err.message}`);
+    return { success: false, commands: [] };
   }
 }
 
 // Test Gateway connection (brief)
-async function testGateway() {
+async function testGateway(): Promise<{ success: boolean }> {
   console.log('\n🌐 Testing Gateway connection...\n');
 
   return new Promise((resolve) => {
@@ -142,7 +171,7 @@ async function testGateway() {
     client.once('ready', () => {
       clearTimeout(timeout);
       console.log(`  ✅ Gateway connected`);
-      console.log(`  ✅ Logged in as: ${client.user.tag}`);
+      console.log(`  ✅ Logged in as: ${client.user?.tag}`);
       console.log(`  ✅ Serving ${client.guilds.cache.size} guild(s)`);
 
       // List guilds
@@ -165,7 +194,7 @@ async function testGateway() {
       resolve({ success: false });
     });
 
-    client.login(process.env.DISCORD_TOKEN).catch((error) => {
+    client.login(process.env.DISCORD_TOKEN).catch((error: Error) => {
       clearTimeout(timeout);
       console.log(`  ❌ Login failed: ${error.message}`);
       resolve({ success: false });
@@ -174,8 +203,8 @@ async function testGateway() {
 }
 
 // Run all tests
-async function runTests() {
-  const results = {};
+async function runTests(): Promise<void> {
+  const results: TestResults = {};
 
   results.envVars = checkEnvVars();
 
@@ -199,7 +228,7 @@ async function runTests() {
   console.log('\n' + '='.repeat(50));
   console.log('📊 Test Summary\n');
 
-  const tests = [
+  const tests: Array<[string, boolean | undefined]> = [
     ['Environment Variables', results.envVars],
     ['REST API Auth', results.restApi],
     ['Guild Access', results.guildAccess],
@@ -229,6 +258,6 @@ async function runTests() {
 }
 
 runTests().catch(error => {
-  console.error('\n❌ Unexpected error:', error.message);
+  console.error('\n❌ Unexpected error:', (error as Error).message);
   process.exit(1);
 });
