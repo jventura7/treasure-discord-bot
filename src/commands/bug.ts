@@ -51,6 +51,8 @@ function statusEmoji(status: BugStatus): string {
       return "🔵";
     case BugStatus.InProgress:
       return "🟠";
+    case BugStatus.TempFix:
+      return "🟣";
     case BugStatus.Fixed:
       return "✅";
     case BugStatus.NonIssue:
@@ -112,10 +114,10 @@ export const data = new SlashCommandBuilder()
             { name: "Low", value: BugPriority.Low }
           )
       )
-      .addUserOption((option) =>
+      .addStringOption((option) =>
         option
           .setName("assignee")
-          .setDescription("Assign to a user")
+          .setDescription("Assign to a Notion user (name or partial name)")
           .setRequired(false)
       )
       .addStringOption((option) =>
@@ -149,6 +151,7 @@ export const data = new SlashCommandBuilder()
           .addChoices(
             { name: "Open", value: BugStatus.Open },
             { name: "In Progress", value: BugStatus.InProgress },
+            { name: "Temp Fix", value: BugStatus.TempFix },
             { name: "Fixed", value: BugStatus.Fixed },
             { name: "Non Issue", value: BugStatus.NonIssue }
           )
@@ -169,9 +172,16 @@ export const data = new SlashCommandBuilder()
           .addChoices(
             { name: "Open", value: BugStatus.Open },
             { name: "In Progress", value: BugStatus.InProgress },
+            { name: "Temp Fix", value: BugStatus.TempFix },
             { name: "Fixed", value: BugStatus.Fixed },
             { name: "Non Issue", value: BugStatus.NonIssue }
           )
+      )
+      .addStringOption((option) =>
+        option
+          .setName("assignee")
+          .setDescription("Assign to a Notion user (name or partial name)")
+          .setRequired(false)
       )
   )
   .addSubcommand((subcommand) =>
@@ -181,10 +191,10 @@ export const data = new SlashCommandBuilder()
       .addIntegerOption((option) =>
         option.setName("id").setDescription("Bug ID").setRequired(true)
       )
-      .addUserOption((option) =>
+      .addStringOption((option) =>
         option
           .setName("user")
-          .setDescription("User to assign")
+          .setDescription("Notion user to assign (name or partial name)")
           .setRequired(true)
       )
   )
@@ -194,6 +204,12 @@ export const data = new SlashCommandBuilder()
       .setDescription("Mark a bug as completed")
       .addIntegerOption((option) =>
         option.setName("id").setDescription("Bug ID").setRequired(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName("assignee")
+          .setDescription("Assign to a Notion user (name or partial name)")
+          .setRequired(false)
       )
   );
 
@@ -221,7 +237,7 @@ export async function execute(
           "priority",
           true
         ) as BugPriority;
-        const assignee = interaction.options.getUser("assignee");
+        const assignee = interaction.options.getString("assignee");
         const steps = interaction.options.getString("steps");
         const host = interaction.options.getString("host");
         const deadline = interaction.options.getString("deadline");
@@ -231,7 +247,7 @@ export async function execute(
           description,
           severity,
           priority,
-          assignee: assignee?.username,
+          assignee: assignee ?? undefined,
           steps: steps ?? undefined,
           host: host ?? undefined,
           deadline: deadline ?? undefined,
@@ -262,7 +278,7 @@ export async function execute(
             },
             {
               name: "Assignee",
-              value: assignee ? `@${assignee.username}` : "Unassigned",
+              value: assignee ?? "Unassigned",
               inline: true,
             }
           )
@@ -329,8 +345,9 @@ export async function execute(
 
         const bugId = interaction.options.getInteger("id", true);
         const status = interaction.options.getString("status", true) as BugStatus;
+        const assignee = interaction.options.getString("assignee");
 
-        await updateBugStatus(bugId, status);
+        const result = await updateBugStatus(bugId, status, assignee ?? undefined);
 
         const embed = new EmbedBuilder()
           .setColor(Colors.Yellow)
@@ -341,10 +358,17 @@ export async function execute(
               name: "New Status",
               value: `${statusEmoji(status)} ${status}`,
               inline: true,
-            }
+            },
+            { name: "\u200b", value: "\u200b", inline: true },
+            { name: "Title", value: result.title },
+            { name: "Description", value: result.description }
           )
           .setTimestamp()
           .setFooter({ text: "Bug Tracker" });
+
+        if (assignee) {
+          embed.addFields({ name: "Assignee", value: assignee, inline: true });
+        }
 
         await interaction.editReply({ embeds: [embed] });
         break;
@@ -354,16 +378,16 @@ export async function execute(
         await interaction.deferReply();
 
         const bugId = interaction.options.getInteger("id", true);
-        const user = interaction.options.getUser("user", true);
+        const userName = interaction.options.getString("user", true);
 
-        await assignBug(bugId, user.username);
+        const result = await assignBug(bugId, userName);
 
         const embed = new EmbedBuilder()
           .setColor(Colors.Blurple)
           .setTitle("👤 Bug Assigned")
           .addFields(
             { name: "Bug ID", value: `#${bugId}`, inline: true },
-            { name: "Assignee", value: `@${user.username}`, inline: true }
+            { name: "Assignee", value: result.assignedTo ?? userName, inline: true }
           )
           .setTimestamp()
           .setFooter({ text: "Bug Tracker" });
@@ -376,8 +400,9 @@ export async function execute(
         await interaction.deferReply();
 
         const bugId = interaction.options.getInteger("id", true);
+        const assignee = interaction.options.getString("assignee");
 
-        await completeBug(bugId);
+        const result = await completeBug(bugId, assignee ?? undefined);
 
         const embed = new EmbedBuilder()
           .setColor(Colors.Green)
@@ -388,10 +413,17 @@ export async function execute(
               name: "Status",
               value: `${statusEmoji(BugStatus.Fixed)} Fixed`,
               inline: true,
-            }
+            },
+            { name: "\u200b", value: "\u200b", inline: true },
+            { name: "Title", value: result.title },
+            { name: "Description", value: result.description }
           )
           .setTimestamp()
           .setFooter({ text: "Bug Tracker" });
+
+        if (assignee) {
+          embed.addFields({ name: "Assignee", value: assignee, inline: true });
+        }
 
         await interaction.editReply({ embeds: [embed] });
         break;
