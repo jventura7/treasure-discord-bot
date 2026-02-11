@@ -26,7 +26,7 @@ export enum BugStatus {
   InProgress = "In Progress",
   TempFix = "Temp Fix",
   Fixed = "Fixed",
-  NonIssue = "Non Issue",
+  NonIssue = "Non-Issue",
 }
 
 export interface BugInput {
@@ -35,9 +35,7 @@ export interface BugInput {
   severity: BugSeverity;
   priority: BugPriority;
   assignee?: string;
-  steps?: string;
   host?: string;
-  deadline?: string;
 }
 
 export interface Bug {
@@ -98,7 +96,7 @@ export async function listUsers(): Promise<NotionUser[]> {
 }
 
 export async function findUserByName(
-  nameQuery: string
+  nameQuery: string,
 ): Promise<NotionUser | null> {
   const users = await listUsers();
   const query = nameQuery.toLowerCase().trim();
@@ -111,7 +109,7 @@ export async function findUserByName(
   const partialMatch = users.find(
     (u) =>
       u.name.toLowerCase().includes(query) ||
-      query.includes(u.name.toLowerCase())
+      query.includes(u.name.toLowerCase()),
   );
   if (partialMatch) return partialMatch;
 
@@ -126,7 +124,7 @@ export async function findUserByName(
 }
 
 function isFullPage(
-  page: PageObjectResponse | PartialPageObjectResponse
+  page: PageObjectResponse | PartialPageObjectResponse,
 ): page is PageObjectResponse {
   return "properties" in page;
 }
@@ -137,9 +135,7 @@ export async function addBug({
   severity,
   priority,
   assignee,
-  steps,
   host,
-  deadline,
 }: BugInput): Promise<BugCreateResult> {
   const properties: Record<string, unknown> = {
     Title: {
@@ -171,21 +167,9 @@ export async function addBug({
     }
   }
 
-  if (steps) {
-    properties["Reproduction Steps"] = {
-      rich_text: [{ text: { content: steps } }],
-    };
-  }
-
   if (host) {
     properties["Relevant Host"] = {
       rich_text: [{ text: { content: host } }],
-    };
-  }
-
-  if (deadline) {
-    properties["Deadline"] = {
-      date: { start: deadline },
     };
   }
 
@@ -224,7 +208,7 @@ const severityOrder: Record<BugSeverity, number> = {
 };
 
 export async function listBugs(
-  statusFilter: string | null = null
+  statusFilter: string | null = null,
 ): Promise<Bug[]> {
   // When no filter provided, exclude completed (Fixed) bugs
   const filter = statusFilter
@@ -245,7 +229,7 @@ export async function listBugs(
 
   const bugs = response.results
     .filter((page): page is PageObjectResponse =>
-      isFullPage(page as PageObjectResponse | PartialPageObjectResponse)
+      isFullPage(page as PageObjectResponse | PartialPageObjectResponse),
     )
     .map((page) => {
       const props = page.properties as Record<
@@ -300,7 +284,9 @@ async function findBugByNumber(bugNumber: number): Promise<{ id: string }> {
 export async function updateBugStatus(
   bugNumber: number,
   status: string,
-  assignee?: string
+  assignee?: string,
+  resolution?: string,
+  whatHappened?: string,
 ): Promise<BugUpdateResult> {
   const bug = await findBugByNumber(bugNumber);
 
@@ -336,6 +322,18 @@ export async function updateBugStatus(
     }
   }
 
+  if (resolution) {
+    properties["Resolution"] = {
+      rich_text: [{ text: { content: resolution } }],
+    };
+  }
+
+  if (whatHappened) {
+    properties["What Happened?"] = {
+      rich_text: [{ text: { content: whatHappened } }],
+    };
+  }
+
   await notion.pages.update({
     page_id: bug.id,
     properties: properties as Parameters<
@@ -348,14 +346,14 @@ export async function updateBugStatus(
 
 export async function assignBug(
   bugNumber: number,
-  assignee: string
+  assignee: string,
 ): Promise<{ success: boolean; assignedTo?: string }> {
   const bug = await findBugByNumber(bugNumber);
 
   const user = await findUserByName(assignee);
   if (!user) {
     throw new Error(
-      `User "${assignee}" not found. Use /bug users to see available users.`
+      `User "${assignee}" not found. Use /bug users to see available users.`,
     );
   }
 
@@ -373,7 +371,9 @@ export async function assignBug(
 
 export async function completeBug(
   bugNumber: number,
-  assignee?: string
+  assignee?: string,
+  resolution?: string,
+  whatHappened?: string,
 ): Promise<BugCompleteResult> {
   const bug = await findBugByNumber(bugNumber);
 
@@ -410,6 +410,18 @@ export async function completeBug(
         people: [{ id: user.id }],
       };
     }
+  }
+
+  if (resolution) {
+    properties["Resolution"] = {
+      rich_text: [{ text: { content: resolution } }],
+    };
+  }
+
+  if (whatHappened) {
+    properties["What Happened?"] = {
+      rich_text: [{ text: { content: whatHappened } }],
+    };
   }
 
   await notion.pages.update({

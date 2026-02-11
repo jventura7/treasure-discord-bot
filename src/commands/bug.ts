@@ -83,13 +83,13 @@ export const data = new SlashCommandBuilder()
       .setName("add")
       .setDescription("Add a new bug to the tracker")
       .addStringOption((option) =>
-        option.setName("title").setDescription("Bug title").setRequired(true)
+        option.setName("title").setDescription("Bug title").setRequired(true),
       )
       .addStringOption((option) =>
         option
           .setName("description")
           .setDescription("Bug description")
-          .setRequired(true)
+          .setRequired(true),
       )
       .addStringOption((option) =>
         option
@@ -99,8 +99,8 @@ export const data = new SlashCommandBuilder()
           .addChoices(
             { name: "High", value: BugSeverity.High },
             { name: "Medium", value: BugSeverity.Medium },
-            { name: "Low", value: BugSeverity.Low }
-          )
+            { name: "Low", value: BugSeverity.Low },
+          ),
       )
       .addStringOption((option) =>
         option
@@ -111,33 +111,21 @@ export const data = new SlashCommandBuilder()
             { name: "Urgent", value: BugPriority.Urgent },
             { name: "High", value: BugPriority.High },
             { name: "Medium", value: BugPriority.Medium },
-            { name: "Low", value: BugPriority.Low }
-          )
+            { name: "Low", value: BugPriority.Low },
+          ),
       )
       .addStringOption((option) =>
         option
           .setName("assignee")
           .setDescription("Assign to a Notion user (name or partial name)")
-          .setRequired(false)
-      )
-      .addStringOption((option) =>
-        option
-          .setName("steps")
-          .setDescription("Reproduction steps")
-          .setRequired(false)
+          .setRequired(false),
       )
       .addStringOption((option) =>
         option
           .setName("host")
           .setDescription("Relevant host/environment")
-          .setRequired(false)
-      )
-      .addStringOption((option) =>
-        option
-          .setName("deadline")
-          .setDescription("Deadline (YYYY-MM-DD format)")
-          .setRequired(false)
-      )
+          .setRequired(false),
+      ),
   )
   .addSubcommand((subcommand) =>
     subcommand
@@ -153,16 +141,16 @@ export const data = new SlashCommandBuilder()
             { name: "In Progress", value: BugStatus.InProgress },
             { name: "Temp Fix", value: BugStatus.TempFix },
             { name: "Fixed", value: BugStatus.Fixed },
-            { name: "Non Issue", value: BugStatus.NonIssue }
-          )
-      )
+            { name: "Non-Issue", value: BugStatus.NonIssue },
+          ),
+      ),
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName("update")
       .setDescription("Update a bug status")
       .addIntegerOption((option) =>
-        option.setName("id").setDescription("Bug ID").setRequired(true)
+        option.setName("id").setDescription("Bug ID").setRequired(true),
       )
       .addStringOption((option) =>
         option
@@ -174,43 +162,67 @@ export const data = new SlashCommandBuilder()
             { name: "In Progress", value: BugStatus.InProgress },
             { name: "Temp Fix", value: BugStatus.TempFix },
             { name: "Fixed", value: BugStatus.Fixed },
-            { name: "Non Issue", value: BugStatus.NonIssue }
-          )
+            { name: "Non-Issue", value: BugStatus.NonIssue },
+          ),
       )
       .addStringOption((option) =>
         option
           .setName("assignee")
           .setDescription("Assign to a Notion user (name or partial name)")
-          .setRequired(false)
+          .setRequired(false),
       )
+      .addStringOption((option) =>
+        option
+          .setName("resolution")
+          .setDescription("Resolution notes")
+          .setRequired(false),
+      )
+      .addStringOption((option) =>
+        option
+          .setName("what_happened")
+          .setDescription("What happened?")
+          .setRequired(false),
+      ),
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName("assign")
       .setDescription("Assign a bug to someone")
       .addIntegerOption((option) =>
-        option.setName("id").setDescription("Bug ID").setRequired(true)
+        option.setName("id").setDescription("Bug ID").setRequired(true),
       )
       .addStringOption((option) =>
         option
           .setName("user")
           .setDescription("Notion user to assign (name or partial name)")
-          .setRequired(true)
-      )
+          .setRequired(true),
+      ),
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName("complete")
       .setDescription("Mark a bug as completed")
       .addIntegerOption((option) =>
-        option.setName("id").setDescription("Bug ID").setRequired(true)
+        option.setName("id").setDescription("Bug ID").setRequired(true),
       )
       .addStringOption((option) =>
         option
           .setName("assignee")
           .setDescription("Assign to a Notion user (name or partial name)")
-          .setRequired(false)
+          .setRequired(false),
       )
+      .addStringOption((option) =>
+        option
+          .setName("resolution")
+          .setDescription("Resolution notes")
+          .setRequired(false),
+      )
+      .addStringOption((option) =>
+        option
+          .setName("what_happened")
+          .setDescription("What happened?")
+          .setRequired(false),
+      ),
   );
 
 function formatBugLine(bug: Bug): string {
@@ -218,7 +230,7 @@ function formatBugLine(bug: Bug): string {
 }
 
 export async function execute(
-  interaction: ChatInputCommandInteraction
+  interaction: ChatInputCommandInteraction,
 ): Promise<void> {
   const subcommand = interaction.options.getSubcommand();
 
@@ -231,16 +243,14 @@ export async function execute(
         const description = interaction.options.getString("description", true);
         const severity = interaction.options.getString(
           "severity",
-          true
+          true,
         ) as BugSeverity;
         const priority = interaction.options.getString(
           "priority",
-          true
+          true,
         ) as BugPriority;
         const assignee = interaction.options.getString("assignee");
-        const steps = interaction.options.getString("steps");
         const host = interaction.options.getString("host");
-        const deadline = interaction.options.getString("deadline");
 
         const bug = await addBug({
           title,
@@ -248,9 +258,7 @@ export async function execute(
           severity,
           priority,
           assignee: assignee ?? undefined,
-          steps: steps ?? undefined,
           host: host ?? undefined,
-          deadline: deadline ?? undefined,
         });
 
         const embed = new EmbedBuilder()
@@ -280,19 +288,13 @@ export async function execute(
               name: "Assignee",
               value: assignee ?? "Unassigned",
               inline: true,
-            }
+            },
           )
           .setTimestamp()
           .setFooter({ text: "Bug Tracker" });
 
-        if (steps) {
-          embed.addFields({ name: "Reproduction Steps", value: steps });
-        }
         if (host) {
           embed.addFields({ name: "Environment", value: host, inline: true });
-        }
-        if (deadline) {
-          embed.addFields({ name: "Deadline", value: deadline, inline: true });
         }
 
         await interaction.editReply({ embeds: [embed] });
@@ -315,11 +317,13 @@ export async function execute(
           embed.setDescription(
             statusFilter
               ? `No bugs found with status: **${statusFilter}**\n\nTry a different filter or view all bugs with \`/bug list\``
-              : "No bugs found.\n\nCreate one with `/bug add`"
+              : "No bugs found.\n\nCreate one with `/bug add`",
           );
         } else {
           const filterText = statusFilter ? ` (${statusFilter})` : "";
-          embed.setTitle(`🐛 Bug Tracker - ${bugs.length} bug${bugs.length > 1 ? "s" : ""}${filterText}`);
+          embed.setTitle(
+            `🐛 Bug Tracker - ${bugs.length} bug${bugs.length > 1 ? "s" : ""}${filterText}`,
+          );
 
           const bugLines = bugs
             .slice(0, 10)
@@ -344,10 +348,21 @@ export async function execute(
         await interaction.deferReply();
 
         const bugId = interaction.options.getInteger("id", true);
-        const status = interaction.options.getString("status", true) as BugStatus;
+        const status = interaction.options.getString(
+          "status",
+          true,
+        ) as BugStatus;
         const assignee = interaction.options.getString("assignee");
+        const resolution = interaction.options.getString("resolution");
+        const whatHappened = interaction.options.getString("what_happened");
 
-        const result = await updateBugStatus(bugId, status, assignee ?? undefined);
+        const result = await updateBugStatus(
+          bugId,
+          status,
+          assignee ?? undefined,
+          resolution ?? undefined,
+          whatHappened ?? undefined,
+        );
 
         const embed = new EmbedBuilder()
           .setColor(Colors.Yellow)
@@ -361,13 +376,19 @@ export async function execute(
             },
             { name: "\u200b", value: "\u200b", inline: true },
             { name: "Title", value: result.title },
-            { name: "Description", value: result.description }
+            { name: "Description", value: result.description },
           )
           .setTimestamp()
           .setFooter({ text: "Bug Tracker" });
 
         if (assignee) {
           embed.addFields({ name: "Assignee", value: assignee, inline: true });
+        }
+        if (resolution) {
+          embed.addFields({ name: "Resolution", value: resolution });
+        }
+        if (whatHappened) {
+          embed.addFields({ name: "What Happened?", value: whatHappened });
         }
 
         await interaction.editReply({ embeds: [embed] });
@@ -387,7 +408,11 @@ export async function execute(
           .setTitle("👤 Bug Assigned")
           .addFields(
             { name: "Bug ID", value: `#${bugId}`, inline: true },
-            { name: "Assignee", value: result.assignedTo ?? userName, inline: true }
+            {
+              name: "Assignee",
+              value: result.assignedTo ?? userName,
+              inline: true,
+            },
           )
           .setTimestamp()
           .setFooter({ text: "Bug Tracker" });
@@ -401,8 +426,15 @@ export async function execute(
 
         const bugId = interaction.options.getInteger("id", true);
         const assignee = interaction.options.getString("assignee");
+        const resolution = interaction.options.getString("resolution");
+        const whatHappened = interaction.options.getString("what_happened");
 
-        const result = await completeBug(bugId, assignee ?? undefined);
+        const result = await completeBug(
+          bugId,
+          assignee ?? undefined,
+          resolution ?? undefined,
+          whatHappened ?? undefined,
+        );
 
         const embed = new EmbedBuilder()
           .setColor(Colors.Green)
@@ -416,13 +448,19 @@ export async function execute(
             },
             { name: "\u200b", value: "\u200b", inline: true },
             { name: "Title", value: result.title },
-            { name: "Description", value: result.description }
+            { name: "Description", value: result.description },
           )
           .setTimestamp()
           .setFooter({ text: "Bug Tracker" });
 
         if (assignee) {
           embed.addFields({ name: "Assignee", value: assignee, inline: true });
+        }
+        if (resolution) {
+          embed.addFields({ name: "Resolution", value: resolution });
+        }
+        if (whatHappened) {
+          embed.addFields({ name: "What Happened?", value: whatHappened });
         }
 
         await interaction.editReply({ embeds: [embed] });
