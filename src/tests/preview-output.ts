@@ -117,8 +117,6 @@ function statusEmoji(status: BugStatus): string {
       return "✅";
     case BugStatus.NonIssue:
       return "⚪";
-    case BugStatus.TempFix:
-      return "🟣";
   }
 }
 
@@ -180,7 +178,7 @@ const allBugs = [
   {
     id: 43,
     title: "Database connection pool exhausted",
-    status: BugStatus.TempFix,
+    status: BugStatus.InProgress,
     severity: BugSeverity.High,
     priority: BugPriority.High,
     assignee: "bob",
