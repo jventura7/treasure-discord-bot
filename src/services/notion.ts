@@ -8,6 +8,7 @@ import "dotenv/config";
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 const dataSourceId = process.env.NOTION_DATA_SOURCE_ID!;
 
+// Enums
 export enum BugSeverity {
   High = "High",
   Medium = "Medium",
@@ -24,18 +25,20 @@ export enum BugPriority {
 export enum BugStatus {
   Open = "Open",
   InProgress = "In Progress",
-  TempFix = "Temp Fix",
   Fixed = "Fixed",
-  NonIssue = "Non-Issue",
+  NonIssue = "Non Issue",
 }
 
+// Types
 export interface BugInput {
   title: string;
   description: string;
   severity: BugSeverity;
   priority: BugPriority;
   assignee?: string;
+  steps?: string;
   host?: string;
+  deadline?: string;
 }
 
 export interface Bug {
@@ -53,76 +56,6 @@ export interface BugCreateResult {
   notionId: string;
 }
 
-export interface BugCompleteResult {
-  success: boolean;
-  title: string;
-  description: string;
-}
-
-export interface BugUpdateResult {
-  success: boolean;
-  title: string;
-  description: string;
-}
-
-export interface NotionUser {
-  id: string;
-  name: string;
-  email?: string;
-}
-
-// Cache users for performance (refresh every 5 minutes)
-let usersCache: NotionUser[] = [];
-let usersCacheTime = 0;
-const USERS_CACHE_TTL = 5 * 60 * 1000;
-
-export async function listUsers(): Promise<NotionUser[]> {
-  const now = Date.now();
-  if (usersCache.length > 0 && now - usersCacheTime < USERS_CACHE_TTL) {
-    return usersCache;
-  }
-
-  const response = await notion.users.list({});
-  usersCache = response.results
-    .filter((user) => user.type === "person")
-    .map((user) => ({
-      id: user.id,
-      name: user.name ?? "Unknown",
-      email: user.type === "person" ? user.person?.email : undefined,
-    }));
-  usersCacheTime = now;
-
-  return usersCache;
-}
-
-export async function findUserByName(
-  nameQuery: string,
-): Promise<NotionUser | null> {
-  const users = await listUsers();
-  const query = nameQuery.toLowerCase().trim();
-
-  // Exact match first
-  const exactMatch = users.find((u) => u.name.toLowerCase() === query);
-  if (exactMatch) return exactMatch;
-
-  // Partial match (name contains query or query contains name)
-  const partialMatch = users.find(
-    (u) =>
-      u.name.toLowerCase().includes(query) ||
-      query.includes(u.name.toLowerCase()),
-  );
-  if (partialMatch) return partialMatch;
-
-  // Fuzzy match: check if all words in query appear in name
-  const queryWords = query.split(/\s+/);
-  const fuzzyMatch = users.find((u) => {
-    const nameLower = u.name.toLowerCase();
-    return queryWords.every((word) => nameLower.includes(word));
-  });
-
-  return fuzzyMatch ?? null;
-}
-
 function isFullPage(
   page: PageObjectResponse | PartialPageObjectResponse,
 ): page is PageObjectResponse {
@@ -135,7 +68,9 @@ export async function addBug({
   severity,
   priority,
   assignee,
+  steps,
   host,
+  deadline,
 }: BugInput): Promise<BugCreateResult> {
   const properties: Record<string, unknown> = {
     Title: {
@@ -159,17 +94,26 @@ export async function addBug({
   };
 
   if (assignee) {
-    const user = await findUserByName(assignee);
-    if (user) {
-      properties["Assignee"] = {
-        people: [{ id: user.id }],
-      };
-    }
+    properties["Assignee"] = {
+      rich_text: [{ text: { content: assignee } }],
+    };
+  }
+
+  if (steps) {
+    properties["Reproduction Steps"] = {
+      rich_text: [{ text: { content: steps } }],
+    };
   }
 
   if (host) {
     properties["Relevant Host"] = {
       rich_text: [{ text: { content: host } }],
+    };
+  }
+
+  if (deadline) {
+    properties["Deadline"] = {
+      date: { start: deadline },
     };
   }
 
@@ -194,40 +138,24 @@ export async function addBug({
   };
 }
 
-const priorityOrder: Record<BugPriority, number> = {
-  [BugPriority.Urgent]: 0,
-  [BugPriority.High]: 1,
-  [BugPriority.Medium]: 2,
-  [BugPriority.Low]: 3,
-};
-
-const severityOrder: Record<BugSeverity, number> = {
-  [BugSeverity.High]: 0,
-  [BugSeverity.Medium]: 1,
-  [BugSeverity.Low]: 2,
-};
-
 export async function listBugs(
   statusFilter: string | null = null,
 ): Promise<Bug[]> {
-  // When no filter provided, exclude completed (Fixed) bugs
   const filter = statusFilter
     ? {
         property: "Status",
         status: { equals: statusFilter },
       }
-    : {
-        property: "Status",
-        status: { does_not_equal: BugStatus.Fixed },
-      };
+    : undefined;
 
   // Use dataSources.query with data_source_id (new API 2025-09-03)
   const response = await notion.dataSources.query({
     data_source_id: dataSourceId,
     filter,
+    sorts: [{ property: "Date Created", direction: "descending" }],
   });
 
-  const bugs = response.results
+  return response.results
     .filter((page): page is PageObjectResponse =>
       isFullPage(page as PageObjectResponse | PartialPageObjectResponse),
     )
@@ -239,7 +167,7 @@ export async function listBugs(
           title?: Array<{ text?: { content: string } }>;
           status?: { name: string };
           select?: { name: string };
-          people?: Array<{ name?: string }>;
+          rich_text?: Array<{ text?: { content: string } }>;
         }
       >;
 
@@ -252,16 +180,65 @@ export async function listBugs(
           BugSeverity.Medium) as BugSeverity,
         priority: (props["Priority"]?.select?.name ??
           BugPriority.Medium) as BugPriority,
-        assignee: props["Assignee"]?.people?.[0]?.name ?? "Unassigned",
+        assignee:
+          props["Assignee"]?.rich_text?.[0]?.text?.content ?? "Unassigned",
       };
     });
+}
 
-  // Sort by priority first, then by severity
-  return bugs.sort((a, b) => {
-    const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
-    if (priorityDiff !== 0) return priorityDiff;
-    return severityOrder[a.severity] - severityOrder[b.severity];
+export interface BugDetails {
+  id: number | string;
+  notionId: string;
+  title: string;
+  description: string;
+  status: BugStatus;
+  severity: BugSeverity;
+  priority: BugPriority;
+  assignee: string;
+  steps?: string;
+  host?: string;
+}
+
+export async function getBugDetails(bugNumber: number): Promise<BugDetails> {
+  const response = await notion.dataSources.query({
+    data_source_id: dataSourceId,
+    filter: {
+      property: "Bug ID",
+      unique_id: { equals: bugNumber },
+    },
   });
+
+  if (response.results.length === 0) {
+    throw new Error(`Bug #${bugNumber} not found`);
+  }
+
+  const page = response.results[0] as PageObjectResponse;
+  const props = page.properties as Record<
+    string,
+    {
+      unique_id?: { number: number };
+      title?: Array<{ text?: { content: string } }>;
+      status?: { name: string };
+      select?: { name: string };
+      rich_text?: Array<{ text?: { content: string } }>;
+    }
+  >;
+
+  return {
+    id: props["Bug ID"]?.unique_id?.number ?? "N/A",
+    notionId: page.id,
+    title: props["Title"]?.title?.[0]?.text?.content ?? "Untitled",
+    description: props["Description"]?.rich_text?.[0]?.text?.content ?? "",
+    status: (props["Status"]?.status?.name ?? BugStatus.Open) as BugStatus,
+    severity: (props["Severity"]?.select?.name ??
+      BugSeverity.Medium) as BugSeverity,
+    priority: (props["Priority"]?.select?.name ??
+      BugPriority.Medium) as BugPriority,
+    assignee: props["Assignee"]?.rich_text?.[0]?.text?.content ?? "Unassigned",
+    steps:
+      props["Reproduction Steps"]?.rich_text?.[0]?.text?.content ?? undefined,
+    host: props["Relevant Host"]?.rich_text?.[0]?.text?.content ?? undefined,
+  };
 }
 
 async function findBugByNumber(bugNumber: number): Promise<{ id: string }> {
@@ -284,152 +261,55 @@ async function findBugByNumber(bugNumber: number): Promise<{ id: string }> {
 export async function updateBugStatus(
   bugNumber: number,
   status: string,
-  assignee?: string,
-  resolution?: string,
-  whatHappened?: string,
-): Promise<BugUpdateResult> {
+): Promise<{ success: boolean }> {
   const bug = await findBugByNumber(bugNumber);
-
-  // Fetch current page details to get title and description
-  const page = (await notion.pages.retrieve({
-    page_id: bug.id,
-  })) as PageObjectResponse;
-
-  const props = page.properties as Record<
-    string,
-    {
-      title?: Array<{ text?: { content: string } }>;
-      rich_text?: Array<{ text?: { content: string } }>;
-    }
-  >;
-
-  const title = props["Title"]?.title?.[0]?.text?.content ?? "Untitled";
-  const description =
-    props["Description"]?.rich_text?.[0]?.text?.content ?? "No description";
-
-  const properties: Record<string, unknown> = {
-    Status: {
-      status: { name: status },
-    },
-  };
-
-  if (assignee) {
-    const user = await findUserByName(assignee);
-    if (user) {
-      properties["Assignee"] = {
-        people: [{ id: user.id }],
-      };
-    }
-  }
-
-  if (resolution) {
-    properties["Resolution"] = {
-      rich_text: [{ text: { content: resolution } }],
-    };
-  }
-
-  if (whatHappened) {
-    properties["What Happened?"] = {
-      rich_text: [{ text: { content: whatHappened } }],
-    };
-  }
 
   await notion.pages.update({
     page_id: bug.id,
-    properties: properties as Parameters<
-      typeof notion.pages.update
-    >[0]["properties"],
+    properties: {
+      Status: {
+        status: { name: status },
+      },
+    },
   });
 
-  return { success: true, title, description };
+  return { success: true };
 }
 
 export async function assignBug(
   bugNumber: number,
   assignee: string,
-): Promise<{ success: boolean; assignedTo?: string }> {
+): Promise<{ success: boolean }> {
   const bug = await findBugByNumber(bugNumber);
-
-  const user = await findUserByName(assignee);
-  if (!user) {
-    throw new Error(
-      `User "${assignee}" not found. Use /bug users to see available users.`,
-    );
-  }
 
   await notion.pages.update({
     page_id: bug.id,
     properties: {
       Assignee: {
-        people: [{ id: user.id }],
+        rich_text: [{ text: { content: assignee } }],
       },
-    } as Parameters<typeof notion.pages.update>[0]["properties"],
+    },
   });
 
-  return { success: true, assignedTo: user.name };
+  return { success: true };
 }
 
 export async function completeBug(
   bugNumber: number,
-  assignee?: string,
-  resolution?: string,
-  whatHappened?: string,
-): Promise<BugCompleteResult> {
+): Promise<{ success: boolean }> {
   const bug = await findBugByNumber(bugNumber);
-
-  // Fetch current page details to get title and description
-  const page = (await notion.pages.retrieve({
-    page_id: bug.id,
-  })) as PageObjectResponse;
-
-  const props = page.properties as Record<
-    string,
-    {
-      title?: Array<{ text?: { content: string } }>;
-      rich_text?: Array<{ text?: { content: string } }>;
-    }
-  >;
-
-  const title = props["Title"]?.title?.[0]?.text?.content ?? "Untitled";
-  const description =
-    props["Description"]?.rich_text?.[0]?.text?.content ?? "No description";
-
-  const properties: Record<string, unknown> = {
-    Status: {
-      status: { name: BugStatus.Fixed },
-    },
-    "Date Completed": {
-      date: { start: new Date().toISOString() },
-    },
-  };
-
-  if (assignee) {
-    const user = await findUserByName(assignee);
-    if (user) {
-      properties["Assignee"] = {
-        people: [{ id: user.id }],
-      };
-    }
-  }
-
-  if (resolution) {
-    properties["Resolution"] = {
-      rich_text: [{ text: { content: resolution } }],
-    };
-  }
-
-  if (whatHappened) {
-    properties["What Happened?"] = {
-      rich_text: [{ text: { content: whatHappened } }],
-    };
-  }
 
   await notion.pages.update({
     page_id: bug.id,
-    properties: properties as Parameters<
-      typeof notion.pages.update
-    >[0]["properties"],
+    properties: {
+      Status: {
+        status: { name: BugStatus.Fixed },
+      },
+      "Date Completed": {
+        date: { start: new Date().toISOString() },
+      },
+    },
   });
 
-  return { success: true, title, description };
+  return { success: true };
 }

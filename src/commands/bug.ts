@@ -10,6 +10,7 @@ import {
   updateBugStatus,
   assignBug,
   completeBug,
+  getBugDetails,
   BugSeverity,
   BugPriority,
   BugStatus,
@@ -51,8 +52,6 @@ function statusEmoji(status: BugStatus): string {
       return "🔵";
     case BugStatus.InProgress:
       return "🟠";
-    case BugStatus.TempFix:
-      return "🟣";
     case BugStatus.Fixed:
       return "✅";
     case BugStatus.NonIssue:
@@ -114,16 +113,28 @@ export const data = new SlashCommandBuilder()
             { name: "Low", value: BugPriority.Low },
           ),
       )
-      .addStringOption((option) =>
+      .addUserOption((option) =>
         option
           .setName("assignee")
-          .setDescription("Assign to a Notion user (name or partial name)")
+          .setDescription("Assign to a user")
+          .setRequired(false),
+      )
+      .addStringOption((option) =>
+        option
+          .setName("steps")
+          .setDescription("Reproduction steps")
           .setRequired(false),
       )
       .addStringOption((option) =>
         option
           .setName("host")
           .setDescription("Relevant host/environment")
+          .setRequired(false),
+      )
+      .addStringOption((option) =>
+        option
+          .setName("deadline")
+          .setDescription("Deadline (YYYY-MM-DD format)")
           .setRequired(false),
       ),
   )
@@ -139,9 +150,8 @@ export const data = new SlashCommandBuilder()
           .addChoices(
             { name: "Open", value: BugStatus.Open },
             { name: "In Progress", value: BugStatus.InProgress },
-            { name: "Temp Fix", value: BugStatus.TempFix },
             { name: "Fixed", value: BugStatus.Fixed },
-            { name: "Non-Issue", value: BugStatus.NonIssue },
+            { name: "Non Issue", value: BugStatus.NonIssue },
           ),
       ),
   )
@@ -160,28 +170,9 @@ export const data = new SlashCommandBuilder()
           .addChoices(
             { name: "Open", value: BugStatus.Open },
             { name: "In Progress", value: BugStatus.InProgress },
-            { name: "Temp Fix", value: BugStatus.TempFix },
             { name: "Fixed", value: BugStatus.Fixed },
-            { name: "Non-Issue", value: BugStatus.NonIssue },
+            { name: "Non Issue", value: BugStatus.NonIssue },
           ),
-      )
-      .addStringOption((option) =>
-        option
-          .setName("assignee")
-          .setDescription("Assign to a Notion user (name or partial name)")
-          .setRequired(false),
-      )
-      .addStringOption((option) =>
-        option
-          .setName("resolution")
-          .setDescription("Resolution notes")
-          .setRequired(false),
-      )
-      .addStringOption((option) =>
-        option
-          .setName("what_happened")
-          .setDescription("What happened?")
-          .setRequired(false),
       ),
   )
   .addSubcommand((subcommand) =>
@@ -191,10 +182,10 @@ export const data = new SlashCommandBuilder()
       .addIntegerOption((option) =>
         option.setName("id").setDescription("Bug ID").setRequired(true),
       )
-      .addStringOption((option) =>
+      .addUserOption((option) =>
         option
           .setName("user")
-          .setDescription("Notion user to assign (name or partial name)")
+          .setDescription("User to assign")
           .setRequired(true),
       ),
   )
@@ -204,24 +195,14 @@ export const data = new SlashCommandBuilder()
       .setDescription("Mark a bug as completed")
       .addIntegerOption((option) =>
         option.setName("id").setDescription("Bug ID").setRequired(true),
-      )
-      .addStringOption((option) =>
-        option
-          .setName("assignee")
-          .setDescription("Assign to a Notion user (name or partial name)")
-          .setRequired(false),
-      )
-      .addStringOption((option) =>
-        option
-          .setName("resolution")
-          .setDescription("Resolution notes")
-          .setRequired(false),
-      )
-      .addStringOption((option) =>
-        option
-          .setName("what_happened")
-          .setDescription("What happened?")
-          .setRequired(false),
+      ),
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName("oneshot")
+      .setDescription("Send a bug to the AI agent to fix and create a PR")
+      .addIntegerOption((option) =>
+        option.setName("id").setDescription("Bug ID").setRequired(true),
       ),
   );
 
@@ -249,16 +230,20 @@ export async function execute(
           "priority",
           true,
         ) as BugPriority;
-        const assignee = interaction.options.getString("assignee");
+        const assignee = interaction.options.getUser("assignee");
+        const steps = interaction.options.getString("steps");
         const host = interaction.options.getString("host");
+        const deadline = interaction.options.getString("deadline");
 
         const bug = await addBug({
           title,
           description,
           severity,
           priority,
-          assignee: assignee ?? undefined,
+          assignee: assignee?.username,
+          steps: steps ?? undefined,
           host: host ?? undefined,
+          deadline: deadline ?? undefined,
         });
 
         const embed = new EmbedBuilder()
@@ -286,15 +271,21 @@ export async function execute(
             },
             {
               name: "Assignee",
-              value: assignee ?? "Unassigned",
+              value: assignee ? `@${assignee.username}` : "Unassigned",
               inline: true,
             },
           )
           .setTimestamp()
           .setFooter({ text: "Bug Tracker" });
 
+        if (steps) {
+          embed.addFields({ name: "Reproduction Steps", value: steps });
+        }
         if (host) {
           embed.addFields({ name: "Environment", value: host, inline: true });
+        }
+        if (deadline) {
+          embed.addFields({ name: "Deadline", value: deadline, inline: true });
         }
 
         await interaction.editReply({ embeds: [embed] });
@@ -352,17 +343,8 @@ export async function execute(
           "status",
           true,
         ) as BugStatus;
-        const assignee = interaction.options.getString("assignee");
-        const resolution = interaction.options.getString("resolution");
-        const whatHappened = interaction.options.getString("what_happened");
 
-        const result = await updateBugStatus(
-          bugId,
-          status,
-          assignee ?? undefined,
-          resolution ?? undefined,
-          whatHappened ?? undefined,
-        );
+        await updateBugStatus(bugId, status);
 
         const embed = new EmbedBuilder()
           .setColor(Colors.Yellow)
@@ -374,22 +356,9 @@ export async function execute(
               value: `${statusEmoji(status)} ${status}`,
               inline: true,
             },
-            { name: "\u200b", value: "\u200b", inline: true },
-            { name: "Title", value: result.title },
-            { name: "Description", value: result.description },
           )
           .setTimestamp()
           .setFooter({ text: "Bug Tracker" });
-
-        if (assignee) {
-          embed.addFields({ name: "Assignee", value: assignee, inline: true });
-        }
-        if (resolution) {
-          embed.addFields({ name: "Resolution", value: resolution });
-        }
-        if (whatHappened) {
-          embed.addFields({ name: "What Happened?", value: whatHappened });
-        }
 
         await interaction.editReply({ embeds: [embed] });
         break;
@@ -399,20 +368,16 @@ export async function execute(
         await interaction.deferReply();
 
         const bugId = interaction.options.getInteger("id", true);
-        const userName = interaction.options.getString("user", true);
+        const user = interaction.options.getUser("user", true);
 
-        const result = await assignBug(bugId, userName);
+        await assignBug(bugId, user.username);
 
         const embed = new EmbedBuilder()
           .setColor(Colors.Blurple)
           .setTitle("👤 Bug Assigned")
           .addFields(
             { name: "Bug ID", value: `#${bugId}`, inline: true },
-            {
-              name: "Assignee",
-              value: result.assignedTo ?? userName,
-              inline: true,
-            },
+            { name: "Assignee", value: `@${user.username}`, inline: true },
           )
           .setTimestamp()
           .setFooter({ text: "Bug Tracker" });
@@ -425,16 +390,8 @@ export async function execute(
         await interaction.deferReply();
 
         const bugId = interaction.options.getInteger("id", true);
-        const assignee = interaction.options.getString("assignee");
-        const resolution = interaction.options.getString("resolution");
-        const whatHappened = interaction.options.getString("what_happened");
 
-        const result = await completeBug(
-          bugId,
-          assignee ?? undefined,
-          resolution ?? undefined,
-          whatHappened ?? undefined,
-        );
+        await completeBug(bugId);
 
         const embed = new EmbedBuilder()
           .setColor(Colors.Green)
@@ -446,24 +403,58 @@ export async function execute(
               value: `${statusEmoji(BugStatus.Fixed)} Fixed`,
               inline: true,
             },
-            { name: "\u200b", value: "\u200b", inline: true },
-            { name: "Title", value: result.title },
-            { name: "Description", value: result.description },
           )
           .setTimestamp()
           .setFooter({ text: "Bug Tracker" });
 
-        if (assignee) {
-          embed.addFields({ name: "Assignee", value: assignee, inline: true });
+        await interaction.editReply({ embeds: [embed] });
+        break;
+      }
+
+      case "oneshot": {
+        await interaction.deferReply();
+
+        const bugId = interaction.options.getInteger("id", true);
+        const bug = await getBugDetails(bugId);
+
+        // Build the embed the local agent will parse
+        const embed = new EmbedBuilder()
+          .setColor(Colors.Orange)
+          .setTitle(`Bug Fix Request: ${bug.title.slice(0, 100)}`)
+          .addFields(
+            { name: "Bug ID", value: `${bug.id}`, inline: true },
+            {
+              name: "Reported By",
+              value: interaction.user.username,
+              inline: true,
+            },
+            {
+              name: "Reply Channel",
+              value: interaction.channelId,
+              inline: true,
+            },
+            { name: "Description", value: bug.description || bug.title },
+            { name: "Severity", value: bug.severity, inline: true },
+            { name: "Priority", value: bug.priority, inline: true },
+          )
+          .setTimestamp()
+          .setFooter({ text: "AGENT_BUG_REQUEST" });
+
+        if (bug.steps) {
+          embed.addFields({ name: "Steps", value: bug.steps.slice(0, 1024) });
         }
-        if (resolution) {
-          embed.addFields({ name: "Resolution", value: resolution });
-        }
-        if (whatHappened) {
-          embed.addFields({ name: "What Happened?", value: whatHappened });
+        if (bug.host) {
+          embed.addFields({ name: "Host", value: bug.host, inline: true });
         }
 
-        await interaction.editReply({ embeds: [embed] });
+        // Post the embed in the same channel where the command was run
+        if (interaction.channel && "send" in interaction.channel) {
+          await interaction.channel.send({ embeds: [embed] });
+        }
+
+        await interaction.editReply(
+          `Sent bug **#${bug.id}** (\`${bug.title}\`) to the AI agent. I'll post results when done.`,
+        );
         break;
       }
     }
